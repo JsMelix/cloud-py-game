@@ -4,11 +4,12 @@ A pixel art educational video game that teaches cloud computing concepts through
 
 ## Features
 
-- Learn cloud computing concepts through engaging gameplay
-- Pixel art graphics and retro-style presentation
-- Combat system using cloud knowledge as abilities
-- Progressive difficulty with themed levels
-- Achievement and progress tracking system
+- **Enhanced Interactive Learning**: Multi-phase educational system with detailed content, interactive demos, quizzes, and practical exercises
+- **Comprehensive Cloud Education**: Learn EC2, Lambda, S3, VPC, and IAM with real-world scenarios and hands-on practice
+- **Engaging Combat System**: Use cloud knowledge as combat abilities with strategic depth
+- **Rich Visual Experience**: Pixel art graphics with particle effects, screen shake, and visual feedback
+- **Progress Tracking**: Detailed statistics, achievements, and performance analytics
+- **Adaptive Learning**: Personalized experience based on quiz performance and practical completion
 
 ## Installation
 
@@ -26,9 +27,22 @@ python main.py
 
 ## Controls
 
+**Movement & Basic Actions:**
 - **WASD** or **Arrow Keys**: Move character
+- **E**: Interact with learning stations
 - **Space**: Start game (from menu)
-- **Escape**: Return to menu
+- **Escape**: Return to menu / Exit learning
+
+**Enhanced Learning Interface:**
+- **Space/→**: Next page/phase in learning
+- **←**: Previous page/phase  
+- **↑↓**: Select options in quizzes/exercises
+- **Enter**: Confirm selection
+- **Escape**: Exit learning session
+
+**HUD Controls:**
+- **TAB**: Toggle stats panel
+- **M**: Toggle minimap
 
 ## Game Structure
 

@@ -102,6 +102,10 @@ class GameplayState(State):
         # Set up enemies for the current level
         self._setup_enemies()
         
+        # Learning interface state
+        self.learning_ui = None
+        self.in_learning_mode = False
+        
         # Simple learning stations (positions and concept IDs)
         self.learning_stations = [
             {'x': 10 * 32, 'y': 7 * 32, 'concept_id': 'ec2_basics', 'nearby': False},
@@ -132,7 +136,16 @@ class GameplayState(State):
 
     
     def handle_event(self, event):
-        # Handle combat input first (highest priority)
+        # Handle learning interface input first (highest priority)
+        if self.in_learning_mode and self.learning_ui:
+            if not self.learning_ui.handle_input(event):
+                # Learning completed, get results
+                completion_data = self.learning_ui.get_completion_data()
+                concept = self.learning_ui.current_concept
+                self._complete_learning(concept, completion_data)
+            return
+        
+        # Handle combat input second priority
         if self.combat_system.handle_input(event):
             return
         
@@ -157,8 +170,8 @@ class GameplayState(State):
         # Update combat system
         self.combat_system.update(dt)
         
-        # If in combat, don't update movement
-        if self.combat_system.active:
+        # If in combat or learning mode, don't update movement
+        if self.combat_system.active or self.in_learning_mode:
             return
         
         # Update input handler
@@ -246,15 +259,20 @@ class GameplayState(State):
         # Render combat UI (if active)
         self.combat_system.render(screen)
         
-        # Render visual effects
-        camera_x, camera_y = self.level_manager.get_camera_offset()
-        self.av_manager.render(screen, camera_x, camera_y)
-        
-        # Render HUD
-        self.hud.render(screen, self)
-        
-        # Draw additional UI elements
-        self._render_interaction_prompts(screen)
+        # Render learning interface (if active)
+        if self.in_learning_mode and self.learning_ui:
+            self.learning_ui.render(screen)
+        else:
+            # Only render HUD and other elements if not in learning mode
+            # Render visual effects
+            camera_x, camera_y = self.level_manager.get_camera_offset()
+            self.av_manager.render(screen, camera_x, camera_y)
+            
+            # Render HUD
+            self.hud.render(screen, self)
+            
+            # Draw additional UI elements
+            self._render_interaction_prompts(screen)
     
     def _render_player_with_camera(self, screen, camera_x, camera_y):
         """Render player with camera offset"""
@@ -311,45 +329,84 @@ class GameplayState(State):
                 if concept:
                     # Check if already learned
                     if station['concept_id'] in self.player.learned_concepts:
-                        print(f"You have already mastered {concept.name}!")
+                        self.hud.add_notification(f"Already mastered {concept.name}!", 3.0, (255, 200, 100))
                         continue
                     
-                    # Learn the concept
-                    self.player.learn_concept(station['concept_id'])
-                    self.player.gain_experience(100)
-                    
-                    # Track progress
-                    self.progress_tracker.learn_concept(station['concept_id'])
-                    self.progress_tracker.gain_experience(100, "learning")
-                    
-                    # Unlock abilities through ability manager
-                    if self.player.ability_manager:
-                        unlocked_abilities = self.player.ability_manager.unlock_ability(station['concept_id'])
-                        for ability_name in unlocked_abilities:
-                            print(f"Unlocked ability: {ability_name}")
-                            # Auto-equip first few abilities
-                            if len(self.player.ability_manager.equipped_abilities) < 4:
-                                for ability_id, ability in self.player.ability_manager.all_abilities.items():
-                                    if ability.name == ability_name:
-                                        self.player.ability_manager.equip_ability(ability_id)
-                                        break
-                    
-                    # Legacy ability unlock
-                    if concept.unlock_ability:
-                        self.player.current_abilities.append(concept.unlock_ability)
-                    
-                    # Add HUD notification and effects
-                    self.hud.add_notification(f"Learned: {concept.name}!", 4.0, (150, 255, 150))
-                    self.hud.add_notification(f"Gained 100 XP!", 3.0, (100, 150, 255))
-                    
-                    # Play learning effect
-                    self.av_manager.play_learning_effect(
-                        self.player.position.x + self.player.sprite_size // 2,
-                        self.player.position.y + self.player.sprite_size // 2
-                    )
-                    
-                    print(f"Learned: {concept.name} - Gained 100 XP!")
+                    # Start enhanced learning interface
+                    self._start_enhanced_learning(concept)
                     break
+    
+    def _start_enhanced_learning(self, concept):
+        """Start the enhanced learning interface"""
+        from ..ui.learning_interface import InteractiveLearningUI
+        
+        self.learning_ui = InteractiveLearningUI()
+        self.learning_ui.start_learning(concept)
+        self.in_learning_mode = True
+        
+        print(f"Starting enhanced learning for: {concept.name}")
+    
+    def _complete_learning(self, concept, completion_data):
+        """Complete the learning process with results"""
+        if completion_data['passed']:
+            # Learn the concept
+            self.player.learn_concept(concept.id)
+            
+            # Calculate experience based on performance
+            base_exp = 100
+            quiz_bonus = int(completion_data['quiz_percentage'] * 0.5)  # Up to 50 bonus XP
+            practical_bonus = 50 if completion_data['practical_completed'] else 0
+            total_exp = base_exp + quiz_bonus + practical_bonus
+            
+            self.player.gain_experience(total_exp)
+            
+            # Track progress
+            self.progress_tracker.learn_concept(concept.id)
+            self.progress_tracker.gain_experience(total_exp, "learning")
+            self.progress_tracker.complete_quiz(
+                concept.id, 
+                completion_data['quiz_percentage'], 
+                1  # Attempts (simplified)
+            )
+            
+            # Unlock abilities through ability manager
+            if self.player.ability_manager:
+                unlocked_abilities = self.player.ability_manager.unlock_ability(concept.id)
+                for ability_name in unlocked_abilities:
+                    print(f"Unlocked ability: {ability_name}")
+                    # Auto-equip first few abilities
+                    if len(self.player.ability_manager.equipped_abilities) < 4:
+                        for ability_id, ability in self.player.ability_manager.all_abilities.items():
+                            if ability.name == ability_name:
+                                self.player.ability_manager.equip_ability(ability_id)
+                                break
+            
+            # Legacy ability unlock
+            if concept.unlock_ability:
+                self.player.current_abilities.append(concept.unlock_ability)
+            
+            # Add HUD notifications
+            self.hud.add_notification(f"Mastered: {concept.name}!", 4.0, (150, 255, 150))
+            self.hud.add_notification(f"Gained {total_exp} XP!", 3.0, (100, 150, 255))
+            
+            if completion_data['quiz_percentage'] == 100:
+                self.hud.add_notification("Perfect Score! 🏆", 4.0, (255, 215, 0))
+            
+            # Play learning effect
+            self.av_manager.play_learning_effect(
+                self.player.position.x + self.player.sprite_size // 2,
+                self.player.position.y + self.player.sprite_size // 2
+            )
+            
+            print(f"Mastered: {concept.name} - Gained {total_exp} XP!")
+        else:
+            # Failed to pass
+            self.hud.add_notification("Study more and try again!", 3.0, (255, 150, 50))
+            print(f"Need more study for {concept.name}. Try again later!")
+        
+        # Exit learning mode
+        self.in_learning_mode = False
+        self.learning_ui = None
     
     def _render_interaction_prompts(self, screen):
         """Render interaction prompts for nearby learning stations"""
